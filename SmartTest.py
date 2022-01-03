@@ -44,13 +44,29 @@ log.setLevel(logging.DEBUG)
 import paho.mqtt.client as mqtt
 import paho.mqtt.subscribe as subscribe
 
-def on_connect(client, userdata, flags, rc):
-    print("Connected with result code "+str(rc))
-    client.subscribe("AMIS/#")
+mqttc = mqtt.Client()
+mqttc.username_pw_set("loxberry", "XXX")
+mqttc.connect("localhost")
 
-def on_message(client, userdata, msg):
-    print(msg.topic+" "+str(msg.payload))
+mqttc.subscribe("AMIS/Leistung")
+mqttc.subscribe("AMIS/Netzbezug_total")
+mqttc.subscribe("AMIS/Netzeinspeisung_total")
 
+leistung = ""
+netzbezug = ""
+einspeisung = ""
+
+def on_message(client, userdata, message):
+    print("Received message '" + str(message.payload) + "' on topic '"
+        + message.topic + "' with QoS " + str(message.qos))
+    if message.topic == "AMIS/Leistung":
+        leistung = message.payload
+    else if message.topic == "AMIS/Netzbezug_total":
+        netzbezug = message.payload
+    else if message.topic == "AMIS/Netzeinspeisung_total":
+        einspeisung = message.payload
+
+mqttc.on_message = on_message
 
 # --------------------------------------------------------------------------- #
 # define your callback process
@@ -64,21 +80,12 @@ def updating_writer(a):
 
     :param arguments: The input arguments to the call
     """
-    msg = subscribe.simple("AMIS/Leistung", hostname="localhost",
-    port=1883, auth={'username':"loxberry",'password':"XXX"})
-    print(msg.topic+" "+str(msg.payload))
-
-    msg1 = subscribe.simple("AMIS/Netzbezug_total", hostname="localhost",
-    port=1883, auth={'username':"loxberry",'password':"XXX"})
-    print("%s %s" % (msg1.topic, msg1.payload))
-
-    msg2 = subscribe.simple("AMIS/Netzeinspeisung_total", hostname="localhost",
-    port=1883, auth={'username':"loxberry",'password':"XXX"})
-    print("%s %s" % (msg2.topic, msg2.payload))
+    
+    mqttc.loop()
 
     #Converting current power consumption out of MQTT payload to Modbus register
 
-    electrical_power_float = float(msg.payload) #extract value out of payload
+    electrical_power_float = float(leistung) #extract value out of payload
     print electrical_power_float
     electrical_power_hex = struct.pack('>f', electrical_power_float).encode('hex') #convert float value to float32 and further to hex
     electrical_power_hex_part1 = str(electrical_power_hex)[0:4] #extract first register part (hex)
@@ -88,7 +95,7 @@ def updating_writer(a):
 
     #Converting total import value of smart meter out of MQTT payload into Modbus register
 
-    total_import_float = int(msg1.payload)
+    total_import_float = int(netzbezug)
     print total_import_float
     total_import_hex = struct.pack('>f', total_import_float).encode("hex")
     total_import_hex_part1 = str(total_import_hex)[0:4]
@@ -98,7 +105,7 @@ def updating_writer(a):
 
     #Converting total export value of smart meter out of MQTT payload into Modbus register
 
-    total_export_float = int(msg2.payload)
+    total_export_float = int(einspeisung)
     print total_export_float
     total_export_hex = struct.pack('>f', total_export_float).encode("hex")
     total_export_hex_part1 = str(total_export_hex)[0:4]
